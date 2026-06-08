@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartographie des cours d'eau - prototype</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #ffffff;
+        }
+        
+        /* 1. BANDEAU DE TITRE */
+        header {
+            background-color: #ffffff;
+            color: #000000;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            height: 70px;
+            border-bottom: 2px solid #e5e5e5;
+            z-index: 2000;
+            box-sizing: border-box;
+        }
+        header .title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* CONTENEUR PRINCIPAL — occupe tout sauf le header */
+        #main-container {
+            display: flex;
+            flex: 1;
+            position: relative;
+            height: calc(100vh - 70px);
+        }
+
+        /* 2. BARRE DE RECHERCHE — flottante sur la carte */
+        #search-bar-container {
+            position: absolute;
+            top: 14px;
+            left: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 1500;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.20);
+            padding: 6px 10px;
+            box-sizing: border-box;
+        }
+        #address-input {
+            width: 280px;
+            padding: 7px 11px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        #address-input:focus {
+            border-color: #2980b9;
+        }
+        .geoloc-btn {
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 6px 10px;
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+            height: 34px;
+            box-sizing: border-box;
+        }
+        .geoloc-btn:hover {
+            background-color: #f5f5f5;
+        }
+
+        /* 3. SYSTÈME D'ONGLETS LATÉRAUX À GAUCHE */
+        #sidebar-tabs {
+            width: 60px;
+            background-color: #2c3e50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding-top: 15px;
+            gap: 15px;
+            z-index: 1100;
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            width: 45px;
+            height: 45px;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .tab-btn:hover, .tab-btn.active {
+            background-color: #34495e;
+        }
+
+        /* Panneau de contenu des onglets */
+        #sidebar-content {
+            width: 300px;
+            background-color: #f8f9fa;
+            border-right: 1px solid #dee2e6;
+            padding: 20px;
+            box-sizing: border-box;
+            display: none;
+            z-index: 1050;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            flex-shrink: 0;
+        }
+        
+        .panel-section {
+            display: none;
+        }
+        .panel-section.active {
+            display: block;
+        }
+
+        /* 4. ZONE DE DROITE (CARTE) */
+        #right-area {
+            flex: 1;
+            position: relative;
+            height: 100%;
+            z-index: 1;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Panneau d'information en bas à droite */
+        #info-panel-bottom {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 320px;
+            background: white;
+            border-radius: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+            border: 1px solid #e5e5e5;
+            z-index: 1200;
+            padding: 15px;
+            display: none;
+        }
+
+        /* Typographies et éléments internes */
+        h3 { margin-top: 0; color: #2c3e50; font-size: 1.1rem; border-bottom: 2px solid #2c3e50; padding-bottom: 5px; margin-bottom: 15px; }
+        h4 { margin: 10px 0 5px 0; font-size: 0.9rem; color: #333; }
+        p { font-size: 0.85rem; color: #555; line-height: 1.4; margin: 5px 0; }
+        
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.8rem; font-weight: bold; color: white; margin-top: 3px; }
+        .badge-ok    { background-color: #27ae60; }
+        .badge-non   { background-color: #e74c3c; }
+        .badge-doute { background-color: #e67e22; }
+        .badge-danger { background-color: #e74c3c; }
+        .badge-warning { background-color: #f1c40f; color: #333; }
+
+        .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 0.85rem; }
+        .legend-color { width: 30px; height: 6px; border-radius: 3px; }
+
+        .layer-label {
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            margin-bottom: 8px;
+            line-height: 1.3;
+        }
+        .layer-label input[type="checkbox"] {
+            margin: 0;
+            flex-shrink: 0;
+        }
+
+        .rubrique-titre {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #2c3e50;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-bottom: 10px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .filtre-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        button.btn-action { width: 100%; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        button.btn-danger { background-color: #e74c3c; color: white; }
+        button.btn-print { background-color: #34495e; color: white; }
+
+        @media print {
+            header, #sidebar-tabs, #sidebar-content, #info-panel-bottom, #search-bar-container { display: none !important; }
+            #right-area, #map { width: 100vw; height: 100vh; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. BANDEAU SUPÉRIEUR -->
+    <header>
+        <div class="title">cartographie des cours d'eau - prototype</div>
+    </header>
+
+    <div id="main-container">
+        
+        <!-- 3. BARRE DE BOUTONS D'ONGLETS -->
+        <div id="sidebar-tabs">
+            <button class="tab-btn" onclick="toggleTab('legend-panel', this)" title="Légende">🌍</button>
+            <button class="tab-btn" onclick="toggleTab('help-panel', this)" title="Aide législation">ℹ️</button>
+            <button class="tab-btn" onclick="toggleTab('alert-panel', this)" title="Déclarer une anomalie">🚨</button>
+            <button class="tab-btn" onclick="toggleTab('print-panel', this)" title="Imprimer">🖨️</button>
+        </div>
+
+        <!-- PANNEAU DÉPLIABLE DE CONTENU -->
+        <div id="sidebar-content">
+            
+            <!-- Contenu : Légende -->
+            <div id="legend-panel" class="panel-section">
+                <h3>Légende</h3>
+
+                <!-- RUBRIQUE 1 : Cours d'eau -->
+                <div class="rubrique-titre">Cours d'eau</div>
+
+                <!-- Repères visuels légende -->
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #2980b9; height: 5px;"></div>
+                    <div>Tronçon hydrographique</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #e74c3c; opacity: 0.3; height: 12px;"></div>
+                    <div>Zone tampon (5 m)</div>
+                </div>
+                <label class="layer-label" style="margin-top: 8px;">
+                    <input type="checkbox" id="toggleBuffer" onchange="toggleBufferZone()"> Afficher zone tampon (5 m)
+                </label>
+
+                <!-- Filtres thématiques — désactivés provisoirement -->
+                <div style="margin-top: 12px; font-size:0.8rem; color:#95a5a6; font-style:italic;">
+                    Filtres thématiques selon les réglementations à venir.
+                </div>
+
+                <!-- RUBRIQUE 2 : Fonds de carte -->
+                <div class="rubrique-titre" style="margin-top: 18px;">Fonds de carte</div>
+                <label class="layer-label">
+                    <input type="checkbox" id="toggleOrtho" onchange="toggleLayer('ortho')"> Photographies aériennes
+                </label>
+                <label class="layer-label">
+                    <input type="checkbox" id="toggleTopo" onchange="toggleLayer('topo')"> Cartes topo IGN
+                </label>
+                <label class="layer-label">
+                    <input type="checkbox" id="toggleAdmin" onchange="toggleLayer('admin')"> Limites administratives
+                </label>
+                <label class="layer-label">
+                    <input type="checkbox" id="toggleCadastral" onchange="toggleLayer('cadastral')"> Parcelles cadastrales
+                </label>
+            </div>
+
+            <!-- Contenu : Aide Législation -->
+            <div id="help-panel" class="panel-section">
+                <h3>Aide et législations</h3>
+                <p>Ce référentiel unique simplifie l'application de trois réglementations environnementales distinctes :</p>
+                
+                <h4>La police de l'Eau</h4>
+                <p>Soumet à autorisation ou déclaration de la DDT toute modification physique apportée au lit ou aux berges du cours d'eau.</p>
+                
+                <h4>Les bonnes conditions agricoles et environnementales</h4>
+                <p>Conditionne les aides agricoles de l'Europe à l'implantation obligatoire d'une bande tampon végétalisée de 5 mètres le long du cours d'eau.</p>
+                
+                <h4>Les zones non traitées</h4>
+                <p>Interdiction nationale stricte de pulvérisation de produits phytopharmaceutiques à moins de 5 mètres de l'écoulement pour éviter la contamination.</p>
+            </div>
+
+            <!-- Contenu : Déclarer une anomalie -->
+            <div id="alert-panel" class="panel-section">
+                <h3>Déclarer une anomalie</h3>
+                <p>Signalez une anomalie observée sur le terrain (erreur de tracé, cours d'eau inexistant ou simple fossé, omission) :</p>
+                <p>1. Cliquez sur le bouton rouge ci-dessous.<br>2. Pointez l'emplacement exact de l'anomalie sur la carte et détaillez le problème rencontré.<br>3. Une nouvelle fonctionnalité permettra bientôt de prendre en photo l'anomalie rencontrée. </p>
+                <button class="btn-action btn-danger" onclick="activerModeReclamation()"> Activer le pointeur terrain</button>
+            </div>
+
+            <!-- Contenu : Imprimer -->
+            <div id="print-panel" class="panel-section">
+                <h3>Imprimer</h3>
+                <p>Générez un document d'impression propre de la zone cartographique actuelle, sans les menus de navigation.</p>
+                <button class="btn-action btn-print" onclick="window.print()"> Lancer l'impression</button>
+            </div>
+
+        </div>
+
+        <!-- 4. ZONE DE DROITE (LA CARTE) -->
+        <div id="right-area">
+
+            <!-- 2. BARRE DE RECHERCHE — posée sur la carte -->
+            <div id="search-bar-container">
+                <input type="text" id="address-input" placeholder="Saisir une adresse (ex: Albertville)...">
+                <button class="geoloc-btn" onclick="simulerGeoloc()" title="Me localiser">📍</button>
+            </div>
+
+            <div id="map"></div>
+
+            <!-- Fiche d'information (au clic sur un tronçon) -->
+            <div id="info-panel-bottom">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h4 style="margin: 0; font-size: 1.1rem; color: #2c3e50;" id="river-name">Nom du cours d'eau</h4>
+                    <button onclick="fermerInfoPanel()" style="background: none; border: none; font-size: 1.1rem; cursor: pointer; color: #95a5a6;">✕</button>
+                </div>
+                <p style="margin: 0 0 10px 0; font-size: 0.8rem; color: #7f8c8d;"><b>Code ID Unique :</b> <span id="river-id">N/A</span></p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 10px 0;">
+                
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;" class="badges-container">
+                    <!-- rempli dynamiquement au clic -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const map = L.map('map', { zoomControl: false }).setView([45.498, 6.310], 14);
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Bouton "home" — revient sur la France entière
+        const HomeControl = L.Control.extend({
+            options: { position: 'topright' },
+            onAdd: function() {
+                const btn = L.DomUtil.create('button', 'leaflet-bar leaflet-control home-btn');
+                btn.innerHTML = '⌂';
+                btn.title = 'Vue France entière';
+                btn.style.cssText = 'width:30px;height:30px;font-size:1.1rem;cursor:pointer;background:white;border:none;display:flex;align-items:center;justify-content:center;';
+                L.DomEvent.on(btn, 'click', function(e) {
+                    L.DomEvent.stopPropagation(e);
+                    map.setView([46.5, 2.5], 6);
+                });
+                return btn;
+            }
+        });
+        new HomeControl().addTo(map);
+
+        // Fond de carte par défaut (OSM)
+        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap',
+            maxZoom: 19
+        }).addTo(map);
+
+        // ── Fonds de carte IGN / Géoportail ──────────────────────────────────
+        // Clé publique Géoportail (démonstration, aucune clé requise pour ces flux)
+        const ignLayers = {
+            ortho: L.tileLayer(
+                'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+                '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM' +
+                '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fjpeg',
+                { attribution: '© IGN Géoportail — Ortho', maxZoom: 19, opacity: 1 }
+            ),
+            topo: L.tileLayer(
+                'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+                '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM' +
+                '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fpng',
+                { attribution: '© IGN Géoportail — Plan IGN v2', maxZoom: 19, opacity: 0.85 }
+            ),
+            admin: L.tileLayer(
+                'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+                '&LAYER=LIMITES_ADMINISTRATIVES_EXPRESS.LATEST&STYLE=normal&TILEMATRIXSET=PM' +
+                '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fpng',
+                { attribution: '© IGN Géoportail — Limites admin.', maxZoom: 18, opacity: 0.9 }
+            ),
+            cadastral: L.tileLayer(
+                'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+                '&LAYER=CADASTRALPARCELS.PARCELLAIRE_EXPRESS&STYLE=normal&TILEMATRIXSET=PM' +
+                '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fpng',
+                { attribution: '© IGN Géoportail — Cadastre', maxZoom: 20, opacity: 0.85 }
+            )
+        };
+
+        function toggleLayer(key) {
+            const checkbox = document.getElementById('toggle' + key.charAt(0).toUpperCase() + key.slice(1));
+            if (checkbox.checked) {
+                ignLayers[key].addTo(map);
+                // Si on active l'ortho, on la met sous les tronçons
+                if (key === 'ortho') { ignLayers[key].bringToBack(); osmLayer.bringToBack(); }
+            } else {
+                map.removeLayer(ignLayers[key]);
+            }
+        }
+
+        // ── Données réelles issues du GeoJSON cours_eau ──────────────────────
+        const geojsonData = {"type":"FeatureCollection","name":"cours_eau","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Nom":"Ruisseau de Montartier","Id":1,"pol_eau":"Oui","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.307288207395048,45.50586567561825],[6.309089710887222,45.50523997006765],[6.309955976414695,45.50478958995518],[6.310495642229366,45.504588961454026],[6.312739535927005,45.5038947312847],[6.314203339261777,45.50333432142266],[6.315290318949653,45.5030620912519],[6.316678944938594,45.50300258965689],[6.318417023164379,45.502637199625255],[6.319174125010525,45.502559396474126],[6.3193101930643,45.50263849230233],[6.320148566330698,45.50282149308601],[6.320882401418919,45.503123026190515],[6.321182698039085,45.50331270501208],[6.32183374175796,45.503547415330374],[6.322498246201332,45.50389716859886],[6.323008327819646,45.50451932332817],[6.323230249404064,45.50471593555385],[6.323657531513531,45.50483258093873],[6.323940041778599,45.50494427700905],[6.324213860395076,45.5051301147688],[6.324459801622267,45.50528907085574],[6.32450521064597,45.50538931752642]]]}},{"type":"Feature","properties":{"Nom":"Arc","Id":2,"pol_eau":"Oui","BCAE":true,"ZNT":false},"geometry":{"type":"MultiLineString","coordinates":[[[6.307311407961004,45.505814196501305],[6.306969263916243,45.505362501973195],[6.306328792493871,45.504753356348864],[6.305853355969048,45.504268643626844],[6.305363787083424,45.503987526857856],[6.305286083301938,45.50356498144798],[6.30470564845025,45.50264005208841],[6.304018154049317,45.50168133040293],[6.303827897225941,45.501132801061985],[6.303221411877502,45.50065193702226],[6.301763825821927,45.49999293352119],[6.300996761598362,45.49946136998063],[6.300697277489486,45.4988421656345],[6.300455525568156,45.49742701066293],[6.299589939503186,45.49567925299286],[6.298835852331258,45.49403903844242],[6.297538931111019,45.49254407147294],[6.296939026039777,45.49128720597484],[6.296446134058545,45.48962083403734]]]}},{"type":"Feature","properties":{"Nom":"Sans_nom","Id":3,"pol_eau":"Doute","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.299696456000476,45.495703827260805],[6.300493863965309,45.49542178215675],[6.300577901509643,45.49506836179704],[6.300619771178462,45.49422670095826],[6.300758383443229,45.493686965378465],[6.300858764357972,45.49316682524643],[6.30088931689974,45.4930181586811],[6.301118687750889,45.492900584945666],[6.301132841152215,45.49269698784156],[6.301098399684075,45.492559468825505],[6.301277972604024,45.49204623383307],[6.301417669760712,45.491524936300436],[6.30152741621621,45.491383174804625],[6.301810307661821,45.49128249557734],[6.302148372252097,45.491226369307235],[6.302654702691098,45.491349999091504],[6.303256083401726,45.49152624138916],[6.304011471720311,45.49164253268038],[6.304893069872448,45.49189363416512],[6.305476963089824,45.49199649598698],[6.305954895194334,45.49208400588539],[6.306140605543002,45.49211547603859],[6.306201275547025,45.492252221014354],[6.306432901570583,45.492393163893915],[6.306513198393565,45.49241850422316]]]}},{"type":"Feature","properties":{"Nom":"Ruisseau de la Balme","Id":4,"pol_eau":"Non","BCAE":false,"ZNT":false},"geometry":{"type":"MultiLineString","coordinates":[[[6.304037576812676,45.50178696695171],[6.305523170681827,45.50093049320669],[6.305319585257937,45.50059939332461],[6.303300784925497,45.49724169938918],[6.303474926011802,45.49685791735407],[6.304175690877369,45.496717223641596],[6.308380835608609,45.496103839150585],[6.308757150772804,45.49602809479538],[6.309001825075726,45.49594699564905],[6.309241635279188,45.49600457235086],[6.309971891713445,45.49591838518872],[6.312022300391479,45.49572858659451],[6.313104838542942,45.49560427364775]]]}},{"type":"Feature","properties":{"Nom":"Sans_nom","Id":5,"pol_eau":"Doute","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.301417669760712,45.491524936300436],[6.301418326541972,45.4914876864207],[6.3014333495265,45.491429811207105],[6.301484497087957,45.491291565536095],[6.301463663065213,45.491092100272596],[6.301436517912476,45.49102350247382],[6.301404444507854,45.49088865411494],[6.301398311283138,45.49083356092099],[6.301421962553204,45.490778789798846],[6.301420365321733,45.490659607393994]]]}}]};
+
+        // ── Badges dynamiques selon attributs ────────────────────────────────
+        function badgePolEau(val) {
+            if (val === 'Oui')   return '<span class="badge badge-ok">Cours d\'eau caractérisé</span>';
+            if (val === 'Doute') return '<span class="badge badge-doute">Statut en cours d\'instruction</span>';
+            return '<span class="badge badge-non">Non caractérisé</span>';
+        }
+        function badgeBool(val, texteOui, texteNon) {
+            return val
+                ? `<span class="badge badge-ok">${texteOui}</span>`
+                : `<span class="badge badge-non">${texteNon}</span>`;
+        }
+
+        function afficherFiche(props) {
+            const nom = props.Nom === 'Sans_nom' ? '<i>Sans nom</i>' : props.Nom;
+            document.getElementById('river-name').innerHTML = nom;
+            document.getElementById('river-id').innerText   = 'CE_' + String(props.Id).padStart(4, '0');
+            document.querySelector('#info-panel-bottom .badges-container').innerHTML = `
+                <div><b>Loi sur l'Eau :</b><br>${badgePolEau(props.pol_eau)}</div>
+                <div><b> BCAE :</b><br>${badgeBool(props.BCAE, 'Concerné', 'Non concerné')}</div>
+                <div><b> ZNT :</b><br>${badgeBool(props.ZNT, 'Concerné', 'Non concerné')}</div>
+            `;
+            document.getElementById('info-panel-bottom').style.display = 'block';
+        }
+
+        // ── Styles ───────────────────────────────────────────────────────────
+        const styleNormal   = { color: '#2980b9', weight: 5,  opacity: 0.9 };
+        const styleSelected = { color: '#2980b9', weight: 6,  opacity: 1   };
+        const styleHalo     = { color: '#5dade2', weight: 16, opacity: 0.4 };
+
+        let selectedLayer = null;
+        let haloLayer     = null;
+
+        function selectionnerTroncon(geoLayer, props) {
+            if (selectedLayer) { selectedLayer.setStyle(styleNormal); }
+            if (haloLayer)     { map.removeLayer(haloLayer); }
+
+            // Reconstruit le halo à partir des coordonnées GeoJSON (MultiLineString)
+            const haloCoords = props._coords;
+            haloLayer = L.polyline(haloCoords, styleHalo).addTo(map);
+
+            geoLayer.setStyle(styleSelected);
+            geoLayer.bringToFront();
+            selectedLayer = geoLayer;
+
+            afficherFiche(props);
+        }
+
+        // ── Chargement du GeoJSON ─────────────────────────────────────────────
+        const allTroncons = []; // { layer, props }
+
+        L.geoJSON(geojsonData, {
+            style: styleNormal,
+            onEachFeature: function(feature, layer) {
+                const props = feature.properties;
+                props._coords = feature.geometry.coordinates[0].map(c => [c[1], c[0]]);
+
+                layer.on('click', function(e) {
+                    selectionnerTroncon(layer, props);
+                    L.DomEvent.stopPropagation(e);
+                });
+
+                allTroncons.push({ layer, props });
+            }
+        }).addTo(map);
+
+        // Filtre : visible si au moins une case cochée correspond à ses attributs
+        function filtrerCoursDeau() {
+            const wantPolEau = document.getElementById('filterPolEau').checked;
+            const wantZNT    = document.getElementById('filterZNT').checked;
+            const wantBCAE   = document.getElementById('filterBCAE').checked;
+
+            allTroncons.forEach(function({ layer, props }) {
+                const matchPolEau = wantPolEau && (props.pol_eau === 'Oui' || props.pol_eau === 'Doute');
+                const matchZNT    = wantZNT    && props.ZNT  === true;
+                const matchBCAE   = wantBCAE   && props.BCAE === true;
+                const visible     = matchPolEau || matchZNT || matchBCAE;
+
+                if (visible && !map.hasLayer(layer)) {
+                    layer.addTo(map);
+                } else if (!visible && map.hasLayer(layer)) {
+                    layer.remove();
+                    if (selectedLayer === layer) {
+                        selectedLayer = null;
+                        if (haloLayer) { haloLayer.remove(); haloLayer = null; }
+                        fermerInfoPanel();
+                    }
+                }
+            });
+        }
+
+        // Zone tampon — sur le premier tronçon (conservé pour la démo)
+        const _firstCoords = geojsonData.features[0].geometry.coordinates[0].map(c => [c[1], c[0]]);
+        const zoneTampon = L.polyline(_firstCoords, {
+            color: '#e74c3c', weight: 25, opacity: 0.25
+        });
+
+        // Clic carte -> désélectionne
+        map.on('click', function() {
+            if (selectedLayer) { selectedLayer.setStyle(styleNormal); selectedLayer = null; }
+            if (haloLayer)     { map.removeLayer(haloLayer); haloLayer = null; }
+            fermerInfoPanel();
+        });
+
+        function fermerInfoPanel() {
+            document.getElementById('info-panel-bottom').style.display = 'none';
+        }
+
+        // Onglets
+        function toggleTab(panelId, button) {
+            const contentPanel  = document.getElementById('sidebar-content');
+            const sections      = document.getElementsByClassName('panel-section');
+            const buttons       = document.getElementsByClassName('tab-btn');
+            const targetSection = document.getElementById(panelId);
+
+            if (button.classList.contains('active')) {
+                contentPanel.style.display = 'none';
+                button.classList.remove('active');
+            } else {
+                for (let i = 0; i < sections.length; i++) { sections[i].classList.remove('active'); }
+                for (let i = 0; i < buttons.length;  i++) { buttons[i].classList.remove('active');  }
+                contentPanel.style.display = 'block';
+                targetSection.classList.add('active');
+                button.classList.add('active');
+            }
+            setTimeout(() => { map.invalidateSize(); }, 50);
+        }
+
+        // Bande tampon
+        function toggleBufferZone() {
+            document.getElementById('toggleBuffer').checked
+                ? zoneTampon.addTo(map)
+                : map.removeLayer(zoneTampon);
+        }
+
+        // Signalement
+        function activerModeReclamation() {
+            alert("Mode signalement actif.\n\nCliquez n'importe où sur la carte de droite pour pointer l'anomalie.");
+            map.once('click', function(e) {
+                const motif = prompt("Description de l'anomalie (ex: Cours d'eau inexistant, simple fossé) :");
+                if (motif) {
+                    L.marker(e.latlng).addTo(map)
+                        .bindPopup(`<b>⚠️ Anomalie enregistrée</b><br><b>Motif :</b> ${motif}<br><span style='font-size:0.75rem;color:gray;'>Transmis pour traitement à la DDT 73.</span>`)
+                        .openPopup();
+                }
+            });
+        }
+
+        let userMarker = null;
+        function simulerGeoloc() {
+            const posSimulee = [45.498, 6.310];
+            if (userMarker) { map.removeLayer(userMarker); }
+            userMarker = L.circleMarker(posSimulee, {
+                radius: 8, color: '#fff', weight: 2, fillColor: '#3498db', fillOpacity: 1
+            }).addTo(map);
+            userMarker.bindPopup("<b>Votre position GPS</b><br>Proximité cours d'eau.").openPopup();
+            map.setView(posSimulee, 15);
+        }
+    </script>
+</body>
+</html>
