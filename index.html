@@ -173,7 +173,8 @@
         h3 { margin-top: 0; color: #2c3e50; font-size: 1.1rem; border-bottom: 2px solid #2c3e50; padding-bottom: 5px; margin-bottom: 15px; }
         h4 { margin: 10px 0 5px 0; font-size: 0.9rem; color: #333; }
         p { font-size: 0.85rem; color: #555; line-height: 1.4; margin: 5px 0; }
-        
+
+
         .badge { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 0.8rem; font-weight: bold; color: white; margin-top: 3px; }
         .badge-ok    { background-color: #27ae60; }
         .badge-non   { background-color: #e74c3c; }
@@ -219,6 +220,23 @@
         button.btn-danger { background-color: #e74c3c; color: white; }
         button.btn-print { background-color: #34495e; color: white; }
 
+        .btn-en-savoir-plus {
+            display: inline-block;
+            margin: 2px 0 14px 0;
+            padding: 5px 10px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: #2980b9;
+            background-color: #eaf2f8;
+            border: 1px solid #aed6f1;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .btn-en-savoir-plus:hover {
+            background-color: #d4e6f1;
+        }
+
         @media print {
             header, #sidebar-tabs, #sidebar-content, #info-panel-bottom, #search-bar-container { display: none !important; }
             #right-area, #map { width: 100vw; height: 100vh; }
@@ -257,18 +275,23 @@
                     <div class="legend-color" style="background-color: #2980b9; height: 5px;"></div>
                     <div>Tronçon hydrographique</div>
                 </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #e74c3c; opacity: 0.3; height: 12px;"></div>
-                    <div>Zone tampon (5 m)</div>
-                </div>
                 <label class="layer-label" style="margin-top: 8px;">
-                    <input type="checkbox" id="toggleBuffer" onchange="toggleBufferZone()"> Afficher zone tampon (5 m)
+                    <input type="checkbox" id="toggleBuffer" onchange="toggleBufferZone()">
+                    <div class="legend-color" style="background-color: #e74c3c; opacity: 0.3; height: 12px;"></div>
+                    Zone tampon (5 m)
                 </label>
 
-                <!-- Filtres thématiques — désactivés provisoirement -->
-                <div style="margin-top: 12px; font-size:0.8rem; color:#95a5a6; font-style:italic;">
-                    Filtres thématiques selon les réglementations à venir.
-                </div>
+                <!-- Filtres thématiques par réglementation -->
+                <div class="rubrique-titre" style="margin-top: 18px;">Filtrer par réglementation</div>
+                <label class="layer-label">
+                    <input type="checkbox" id="filterPolEau" onchange="filtrerCoursDeau()"> Police de l'eau
+                </label>
+                <label class="layer-label">
+                    <input type="checkbox" id="filterBCAE" onchange="filtrerCoursDeau()"> BCAE
+                </label>
+                <label class="layer-label">
+                    <input type="checkbox" id="filterZNT" onchange="filtrerCoursDeau()"> ZNT
+                </label>
 
                 <!-- RUBRIQUE 2 : Fonds de carte -->
                 <div class="rubrique-titre" style="margin-top: 18px;">Fonds de carte</div>
@@ -276,7 +299,7 @@
                     <input type="checkbox" id="toggleOrtho" onchange="toggleLayer('ortho')"> Photographies aériennes
                 </label>
                 <label class="layer-label">
-                    <input type="checkbox" id="toggleTopo" onchange="toggleLayer('topo')"> Cartes topo IGN
+                    <input type="checkbox" id="toggleTopo" checked disabled onchange="toggleLayer('topo')"> Cartes topo IGN
                 </label>
                 <label class="layer-label">
                     <input type="checkbox" id="toggleAdmin" onchange="toggleLayer('admin')"> Limites administratives
@@ -293,12 +316,15 @@
                 
                 <h4>La police de l'Eau</h4>
                 <p>Soumet à autorisation ou déclaration de la DDT toute modification physique apportée au lit ou aux berges du cours d'eau.</p>
+                <a class="btn-en-savoir-plus" href="https://www.legifrance.gouv.fr/codes/texte_lc/LEGITEXT000006074220" target="_blank" rel="noopener noreferrer">En savoir plus</a>
                 
                 <h4>Les bonnes conditions agricoles et environnementales</h4>
                 <p>Conditionne les aides agricoles de l'Europe à l'implantation obligatoire d'une bande tampon végétalisée de 5 mètres le long du cours d'eau.</p>
+                <a class="btn-en-savoir-plus" href="https://agriculture.gouv.fr/la-conditionnalite-des-aides-pac" target="_blank" rel="noopener noreferrer">En savoir plus</a>
                 
                 <h4>Les zones non traitées</h4>
                 <p>Interdiction nationale stricte de pulvérisation de produits phytopharmaceutiques à moins de 5 mètres de l'écoulement pour éviter la contamination.</p>
+                <a class="btn-en-savoir-plus" href="https://draaf.grand-est.agriculture.gouv.fr/zones-non-traitees-znt-et-distances-de-securite-a1958.html" target="_blank" rel="noopener noreferrer">En savoir plus</a>
             </div>
 
             <!-- Contenu : Déclarer une anomalie -->
@@ -367,11 +393,13 @@
         });
         new HomeControl().addTo(map);
 
-        // Fond de carte par défaut (OSM)
-        const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap',
-            maxZoom: 19
-        }).addTo(map);
+        // Fond de carte par défaut (IGN Géoportail — Plan IGN v2)
+        const osmLayer = L.tileLayer(
+            'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0' +
+            '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM' +
+            '&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image%2Fpng',
+            { attribution: '© IGN Géoportail', maxZoom: 19 }
+        ).addTo(map);
 
         // ── Fonds de carte IGN / Géoportail ──────────────────────────────────
         // Clé publique Géoportail (démonstration, aucune clé requise pour ces flux)
@@ -414,7 +442,7 @@
         }
 
         // ── Données réelles issues du GeoJSON cours_eau ──────────────────────
-        const geojsonData = {"type":"FeatureCollection","name":"cours_eau","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Nom":"Ruisseau de Montartier","Id":1,"pol_eau":"Oui","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.307288207395048,45.50586567561825],[6.309089710887222,45.50523997006765],[6.309955976414695,45.50478958995518],[6.310495642229366,45.504588961454026],[6.312739535927005,45.5038947312847],[6.314203339261777,45.50333432142266],[6.315290318949653,45.5030620912519],[6.316678944938594,45.50300258965689],[6.318417023164379,45.502637199625255],[6.319174125010525,45.502559396474126],[6.3193101930643,45.50263849230233],[6.320148566330698,45.50282149308601],[6.320882401418919,45.503123026190515],[6.321182698039085,45.50331270501208],[6.32183374175796,45.503547415330374],[6.322498246201332,45.50389716859886],[6.323008327819646,45.50451932332817],[6.323230249404064,45.50471593555385],[6.323657531513531,45.50483258093873],[6.323940041778599,45.50494427700905],[6.324213860395076,45.5051301147688],[6.324459801622267,45.50528907085574],[6.32450521064597,45.50538931752642]]]}},{"type":"Feature","properties":{"Nom":"Arc","Id":2,"pol_eau":"Oui","BCAE":true,"ZNT":false},"geometry":{"type":"MultiLineString","coordinates":[[[6.307311407961004,45.505814196501305],[6.306969263916243,45.505362501973195],[6.306328792493871,45.504753356348864],[6.305853355969048,45.504268643626844],[6.305363787083424,45.503987526857856],[6.305286083301938,45.50356498144798],[6.30470564845025,45.50264005208841],[6.304018154049317,45.50168133040293],[6.303827897225941,45.501132801061985],[6.303221411877502,45.50065193702226],[6.301763825821927,45.49999293352119],[6.300996761598362,45.49946136998063],[6.300697277489486,45.4988421656345],[6.300455525568156,45.49742701066293],[6.299589939503186,45.49567925299286],[6.298835852331258,45.49403903844242],[6.297538931111019,45.49254407147294],[6.296939026039777,45.49128720597484],[6.296446134058545,45.48962083403734]]]}},{"type":"Feature","properties":{"Nom":"Sans_nom","Id":3,"pol_eau":"Doute","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.299696456000476,45.495703827260805],[6.300493863965309,45.49542178215675],[6.300577901509643,45.49506836179704],[6.300619771178462,45.49422670095826],[6.300758383443229,45.493686965378465],[6.300858764357972,45.49316682524643],[6.30088931689974,45.4930181586811],[6.301118687750889,45.492900584945666],[6.301132841152215,45.49269698784156],[6.301098399684075,45.492559468825505],[6.301277972604024,45.49204623383307],[6.301417669760712,45.491524936300436],[6.30152741621621,45.491383174804625],[6.301810307661821,45.49128249557734],[6.302148372252097,45.491226369307235],[6.302654702691098,45.491349999091504],[6.303256083401726,45.49152624138916],[6.304011471720311,45.49164253268038],[6.304893069872448,45.49189363416512],[6.305476963089824,45.49199649598698],[6.305954895194334,45.49208400588539],[6.306140605543002,45.49211547603859],[6.306201275547025,45.492252221014354],[6.306432901570583,45.492393163893915],[6.306513198393565,45.49241850422316]]]}},{"type":"Feature","properties":{"Nom":"Ruisseau de la Balme","Id":4,"pol_eau":"Non","BCAE":false,"ZNT":false},"geometry":{"type":"MultiLineString","coordinates":[[[6.304037576812676,45.50178696695171],[6.305523170681827,45.50093049320669],[6.305319585257937,45.50059939332461],[6.303300784925497,45.49724169938918],[6.303474926011802,45.49685791735407],[6.304175690877369,45.496717223641596],[6.308380835608609,45.496103839150585],[6.308757150772804,45.49602809479538],[6.309001825075726,45.49594699564905],[6.309241635279188,45.49600457235086],[6.309971891713445,45.49591838518872],[6.312022300391479,45.49572858659451],[6.313104838542942,45.49560427364775]]]}},{"type":"Feature","properties":{"Nom":"Sans_nom","Id":5,"pol_eau":"Doute","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.301417669760712,45.491524936300436],[6.301418326541972,45.4914876864207],[6.3014333495265,45.491429811207105],[6.301484497087957,45.491291565536095],[6.301463663065213,45.491092100272596],[6.301436517912476,45.49102350247382],[6.301404444507854,45.49088865411494],[6.301398311283138,45.49083356092099],[6.301421962553204,45.490778789798846],[6.301420365321733,45.490659607393994]]]}}]};
+        const geojsonData = {"type":"FeatureCollection","name":"cours_eau","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Nom":"Ruisseau de Montartier","Id":1,"pol_eau":"Oui","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.307288207395048,45.50586567561825],[6.309089710887222,45.50523997006765],[6.309955976414695,45.50478958995518],[6.310495642229366,45.504588961454026],[6.312739535927005,45.5038947312847],[6.314203339261777,45.50333432142266],[6.315290318949653,45.5030620912519],[6.316678944938594,45.50300258965689],[6.318417023164379,45.502637199625255],[6.319174125010525,45.502559396474126],[6.3193101930643,45.50263849230233],[6.320148566330698,45.50282149308601],[6.320882401418919,45.503123026190515],[6.321182698039085,45.50331270501208],[6.32183374175796,45.50354741533037],[6.322498246201332,45.50389716859886],[6.323008327819646,45.50451932332817],[6.323230249404064,45.50471593555385],[6.323657531513531,45.50483258093873],[6.323940041778599,45.50494427700905],[6.324213860395076,45.5051301147688],[6.324459801622267,45.50528907085574],[6.32450521064597,45.50538931752642]]]}},{"type":"Feature","properties":{"Nom":"Arc","Id":2,"pol_eau":"Oui","BCAE":true,"ZNT":false},"geometry":{"type":"MultiLineString","coordinates":[[[6.307311407961004,45.505814196501305],[6.306969263916243,45.505362501973195],[6.306328792493871,45.504753356348864],[6.305853355969048,45.504268643626844],[6.305363787083424,45.503987526857856],[6.305286083301938,45.50356498144798],[6.30470564845025,45.50264005208841],[6.304018154049317,45.50168133040293],[6.303827897225941,45.501132801061985],[6.303221411877502,45.50065193702226],[6.301763825821927,45.49999293352119],[6.300996761598362,45.49946136998063],[6.300697277489486,45.4988421656345],[6.300455525568156,45.49742701066293],[6.299589939503186,45.49567925299286],[6.298835852331258,45.49403903844242],[6.297538931111019,45.49254407147294],[6.296939026039777,45.49128720597484],[6.296446134058545,45.48962083403734]]]}},{"type":"Feature","properties":{"Nom":"Sans_nom","Id":3,"pol_eau":"Doute","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.299696456000476,45.495703827260805],[6.300493863965309,45.49542178215675],[6.300577901509643,45.49506836179704],[6.300619771178462,45.49422670095826],[6.300758383443229,45.493686965378465],[6.300858764357972,45.49316682524643],[6.30088931689974,45.4930181586811],[6.301118687750889,45.492900584945666],[6.301132841152215,45.49269698784156],[6.301098399684075,45.492559468825505],[6.301277972604024,45.49204623383307],[6.301417669760712,45.491524936300436],[6.30152741621621,45.491383174804625],[6.301810307661821,45.49128249557734],[6.302148372252097,45.491226369307235],[6.302654702691098,45.491349999091504],[6.303256083401726,45.49152624138916],[6.304011471720311,45.49164253268038],[6.304893069872448,45.49189363416512],[6.305476963089824,45.49199649598698],[6.305954895194334,45.49208400588539],[6.306140605543002,45.49211547603859],[6.306201275547025,45.492252221014354],[6.306432901570583,45.492393163893915],[6.306513198393565,45.49241850422316]]]}},{"type":"Feature","properties":{"Nom":"Ruisseau de la Balme","Id":4,"pol_eau":"Non","BCAE":false,"ZNT":false},"geometry":{"type":"MultiLineString","coordinates":[[[6.304037576812676,45.50178696695171],[6.305523170681827,45.50093049320669],[6.305319585257937,45.50059939332461],[6.303300784925497,45.49724169938918],[6.303474926011802,45.49685791735407],[6.304175690877369,45.496717223641596],[6.308380835608609,45.496103839150585],[6.308757150772804,45.49602809479538],[6.309001825075726,45.49594699564905],[6.309241635279188,45.49600457235086],[6.309971891713445,45.49591838518872],[6.312022300391479,45.49572858659451],[6.313104838542942,45.49560427364775]]]}},{"type":"Feature","properties":{"Nom":"Sans_nom","Id":5,"pol_eau":"Doute","BCAE":true,"ZNT":true},"geometry":{"type":"MultiLineString","coordinates":[[[6.301417669760712,45.491524936300436],[6.301418326541972,45.4914876864207],[6.3014333495265,45.491429811207105],[6.301484497087957,45.491291565536095],[6.301463663065213,45.491092100272596],[6.301436517912476,45.49102350247382],[6.301404444507854,45.49088865411494],[6.301398311283138,45.49083356092099],[6.301421962553204,45.490778789798846],[6.301420365321733,45.490659607393994]]]}}]};
 
         // ── Badges dynamiques selon attributs ────────────────────────────────
         function badgePolEau(val) {
@@ -481,17 +509,18 @@
             }
         }).addTo(map);
 
-        // Filtre : visible si au moins une case cochée correspond à ses attributs
+        // Filtre : si aucune case n'est cochée, tout est visible ; sinon visible si concerné par au moins une réglementation cochée
         function filtrerCoursDeau() {
             const wantPolEau = document.getElementById('filterPolEau').checked;
             const wantZNT    = document.getElementById('filterZNT').checked;
             const wantBCAE   = document.getElementById('filterBCAE').checked;
+            const aucunFiltre = !wantPolEau && !wantZNT && !wantBCAE;
 
             allTroncons.forEach(function({ layer, props }) {
                 const matchPolEau = wantPolEau && (props.pol_eau === 'Oui' || props.pol_eau === 'Doute');
                 const matchZNT    = wantZNT    && props.ZNT  === true;
                 const matchBCAE   = wantBCAE   && props.BCAE === true;
-                const visible     = matchPolEau || matchZNT || matchBCAE;
+                const visible     = aucunFiltre || matchPolEau || matchZNT || matchBCAE;
 
                 if (visible && !map.hasLayer(layer)) {
                     layer.addTo(map);
@@ -506,11 +535,13 @@
             });
         }
 
-        // Zone tampon — sur le premier tronçon (conservé pour la démo)
-        const _firstCoords = geojsonData.features[0].geometry.coordinates[0].map(c => [c[1], c[0]]);
-        const zoneTampon = L.polyline(_firstCoords, {
-            color: '#e74c3c', weight: 25, opacity: 0.25
-        });
+        // Zone tampon — sur tous les tronçons
+        const zoneTampon = L.layerGroup(
+            geojsonData.features.map(function(feature) {
+                const coords = feature.geometry.coordinates[0].map(c => [c[1], c[0]]);
+                return L.polyline(coords, { color: '#e74c3c', weight: 25, opacity: 0.25 });
+            })
+        );
 
         // Clic carte -> désélectionne
         map.on('click', function() {
